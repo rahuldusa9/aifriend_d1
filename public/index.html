@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Friend Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 760px; margin: 20px auto; padding: 0 16px; }
+    .row { display:flex; gap:8px; }
+    input, button, textarea { padding:8px; font-size:14px; }
+    #chat { border:1px solid #ddd; padding:8px; height:300px; overflow:auto; margin-top:8px; }
+    .msg.user { text-align:right; color:#111; }
+    .msg.ai { text-align:left; color:#005; }
+  </style>
+</head>
+<body>
+  <h1>AI Friend — Demo</h1>
+
+  <section id="auth">
+    <h3>Register / Login</h3>
+    <div class="row">
+      <input id="name" placeholder="Name (register)" />
+      <input id="email" placeholder="Email" />
+      <input id="password" type="password" placeholder="Password" />
+      <button id="btnRegister">Register</button>
+      <button id="btnLogin">Login</button>
+    </div>
+    <div id="userInfo"></div>
+  </section>
+
+  <section id="friends" style="margin-top:16px; display:none;">
+    <h3>Your AI Friends</h3>
+    <div class="row">
+      <input id="friendName" placeholder="Friend name" />
+      <input id="personality" placeholder="personality comma separated" />
+      <button id="btnCreateFriend">Create</button>
+      <button id="btnLoadFriends">Load</button>
+    </div>
+    <ul id="friendsList"></ul>
+  </section>
+
+  <section id="chatSection" style="display:none; margin-top:16px;">
+    <h3>Chat</h3>
+    <div>
+      <select id="selectFriend"></select>
+      <label><input type="checkbox" id="safeMode" checked/> Safe Mode</label>
+    </div>
+    <div id="chat"></div>
+    <div class="row" style="margin-top:8px;">
+      <input id="message" style="flex:1" placeholder="Type message" />
+      <button id="btnSend">Send</button>
+    </div>
+  </section>
+
+<script>
+const apiBase = '/api';
+let token = null;
+
+function setUser(user, t) {
+  token = t;
+  document.getElementById('userInfo').innerText = user ? `Logged in as ${user.name} (${user.email})` : '';
+  document.getElementById('friends').style.display = user ? 'block' : 'none';
+  document.getElementById('chatSection').style.display = user ? 'block' : 'none';
+}
+
+async function request(path, method='GET', body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const resp = await fetch(apiBase + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  return resp.json();
+}
+
+document.getElementById('btnRegister').onclick = async () => {
+  const name = document.getElementById('name').value;
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const res = await request('/auth/register', 'POST', { name, email, password });
+  if (res.token) setUser(res.user, res.token);
+  else alert(res.message || JSON.stringify(res));
+};
+
+document.getElementById('btnLogin').onclick = async () => {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const res = await request('/auth/login', 'POST', { email, password });
+  if (res.token) setUser(res.user, res.token);
+  else alert(res.message || JSON.stringify(res));
+};
+
+document.getElementById('btnCreateFriend').onclick = async () => {
+  const name = document.getElementById('friendName').value;
+  const personality = document.getElementById('personality').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const res = await request('/ai-friends', 'POST', { name, personality });
+  if (res.friend) loadFriends(); else alert(res.message || JSON.stringify(res));
+};
+
+async function loadFriends(){
+  const res = await request('/ai-friends');
+  const list = document.getElementById('friendsList');
+  const sel = document.getElementById('selectFriend');
+  list.innerHTML = '';
+  sel.innerHTML = '';
+  if (res.friends){
+    res.friends.forEach(f=>{
+      const li = document.createElement('li');
+      li.innerText = `${f.name} — ${f.personality.join(', ')}`;
+      list.appendChild(li);
+      const opt = document.createElement('option'); opt.value = f._id; opt.text = f.name; sel.appendChild(opt);
+    });
+  }
+}
+
+document.getElementById('btnLoadFriends').onclick = loadFriends;
+
+document.getElementById('btnSend').onclick = async () => {
+  const friendId = document.getElementById('selectFriend').value;
+  const message = document.getElementById('message').value;
+  const safeMode = document.getElementById('safeMode').checked;
+  if (!friendId) return alert('Select friend');
+  const res = await request('/chats/send', 'POST', { friendId, message, safeMode });
+  if (res.reply){
+    appendMessage(message, 'user');
+    appendMessage(res.reply, 'ai');
+    document.getElementById('message').value = '';
+  } else alert(res.message || JSON.stringify(res));
+};
+
+function appendMessage(text, who){
+  const chat = document.getElementById('chat');
+  const el = document.createElement('div'); el.className = 'msg ' + who; el.innerText = text;
+  chat.appendChild(el); chat.scrollTop = chat.scrollHeight;
+}
+</script>
+</body>
+</html>
